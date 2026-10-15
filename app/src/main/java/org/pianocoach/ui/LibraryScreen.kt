@@ -108,7 +108,7 @@ fun LibraryScreen(coach: Coach, onPlay: () -> Unit, onSettings: () -> Unit, onOp
                     )
                     OutlinedTextField(
                         value = query, onValueChange = { query = it },
-                        placeholder = { Text("Search: title, pinyin or initials") },
+                        placeholder = { Text("Title, pinyin or initials", maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         leadingIcon = { Icon(Icons.Filled.Search, null) },
                         singleLine = true,
                         modifier = Modifier.weight(1f),

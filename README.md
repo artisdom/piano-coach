@@ -64,7 +64,7 @@ ui/        Library, Play (FallingNotes, SheetView, Keyboard), Settings
 | Tablet | Android | Screen (dp) | Result |
 |---|---|---|---|
 | Lenovo Tab M10 TB-X505F | 10 (API 29) | 1280×800 | library, search, Learn/Follow/Listen, falling notes, sheet, settings ✔; **Bluetooth to the piano ✔** (auto-connect, MTU 247, all 88 LEDs on/off, Learn lights chords and advances on key presses, panel SysEx received) |
-| F888 | 13 (API 33) | 1024×640 | library, search, modes, both views, settings ✔ (on-screen keyboard and speaker; Bluetooth was off) |
+| F888 | 13 (API 33) | 1024×640 | library, search, Learn/Follow/Listen, falling notes, sheet, settings ✔; **Bluetooth to the piano ✔** (auto-connect, MTU 260 — reconnecting after the app was killed took 30 s to ~2 min, see notes; all 88 LEDs on/off; Learn lights chords and advances) |
 
 USB to the piano is not tried yet.
 
@@ -73,6 +73,12 @@ USB to the piano is not tried yet.
 * The piano accepts one Bluetooth LE connection: while an ESP32 board,
   phone or PC holds it, `GZUT-MIDI` stops advertising and the tablet keeps
   searching.
+* After the app is killed while connected (force-stop, reinstall), the
+  piano can ignore connection requests for 30 s to ~2 min (Android reports
+  GATT status 133, "Connection Accept Timeout"); the app keeps retrying
+  and connects by itself. A weak signal makes this worse — keep the tablet
+  near the piano. Cutting Android's 30 s attempt shorter was tried and did
+  not help.
 * Android ≤ 11 needs the location permission **and Location turned on** for
   Bluetooth scans; Android 12+ asks for "Nearby devices".
 * Progress is kept in the app's files as `progress.tsv`, the same format as
