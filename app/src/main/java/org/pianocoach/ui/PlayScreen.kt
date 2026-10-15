@@ -249,12 +249,13 @@ private fun StatusText(snap: Snapshot, mode: Mode) {
     }
     val streak = if (s.streak >= 3) "   streak ${s.streak}" else ""
     Column(horizontalAlignment = Alignment.End) {
+        // Explicit line heights: the theme's 24 sp lines would not fit two in the row.
         if (prompt != null) {
-            Text(prompt, fontSize = 17.sp, maxLines = 1, color = C.led, fontWeight = FontWeight.Bold)
-            Text(score + streak, fontSize = 12.sp, maxLines = 1, color = C.dim)
+            Text(prompt, fontSize = 17.sp, lineHeight = 20.sp, maxLines = 1, color = C.led, fontWeight = FontWeight.Bold)
+            Text(score + streak, fontSize = 12.sp, lineHeight = 15.sp, maxLines = 1, color = C.dim)
         } else {
-            Text(score, fontSize = 16.sp, maxLines = 1, color = C.text)
-            if (streak.isNotEmpty()) Text(streak.trim(), color = C.ok, fontSize = 12.sp)
+            Text(score, fontSize = 16.sp, lineHeight = 20.sp, maxLines = 1, color = C.text)
+            if (streak.isNotEmpty()) Text(streak.trim(), color = C.ok, fontSize = 12.sp, lineHeight = 15.sp)
         }
     }
 }

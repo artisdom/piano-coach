@@ -63,10 +63,10 @@ ui/        Library, Play (FallingNotes, SheetView, Keyboard), Settings
 
 | Tablet | Android | Screen (dp) | Result |
 |---|---|---|---|
-| Lenovo Tab M10 TB-X505F | 10 (API 29) | 1280×800 | library, search, Learn/Follow/Listen, falling notes, sheet, settings ✔ |
-| F888 | 13 (API 33) | 1024×640 | same ✔ |
+| Lenovo Tab M10 TB-X505F | 10 (API 29) | 1280×800 | library, search, Learn/Follow/Listen, falling notes, sheet, settings ✔; **Bluetooth to the piano ✔** (auto-connect, MTU 247, all 88 LEDs on/off, Learn lights chords and advances on key presses, panel SysEx received) |
+| F888 | 13 (API 33) | 1024×640 | library, search, modes, both views, settings ✔ (on-screen keyboard and speaker; Bluetooth was off) |
 
-Not yet tried with the piano attached (see notes below).
+USB to the piano is not tried yet.
 
 ## Notes
 
