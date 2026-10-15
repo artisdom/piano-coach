@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Three piano keys with a red LED dot and a falling note. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#F4F1EA" android:pathData="M30,48h15v30h-15z" />
+    <path android:fillColor="#F4F1EA" android:pathData="M46.5,48h15v30h-15z" />
+    <path android:fillColor="#F4F1EA" android:pathData="M63,48h15v30h-15z" />
+    <path android:fillColor="#1A1E24" android:pathData="M40.5,48h9v18h-9z" />
+    <path android:fillColor="#1A1E24" android:pathData="M57,48h9v18h-9z" />
+    <path android:fillColor="#FF3B4F" android:pathData="M47.5,70h13v6h-13z" />
+    <path android:fillColor="#34D3C2" android:pathData="M48,26h12v19h-12z" />
+    <path android:fillColor="#9B87FF" android:pathData="M64.5,32h12v13h-12z" />
+</vector>
