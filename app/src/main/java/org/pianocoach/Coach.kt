@@ -111,9 +111,6 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
     var shuffleText by mutableStateOf<String?>(null)
         private set
 
-    /** Keys the loaded song plays (notes, not controls, mid-song). */
-    @Volatile
-    private var usedKeys: BooleanArray? = null
 
     /** Control keys held down: their release is not passed on. */
     private val heldControls = BooleanArray(128)
@@ -427,7 +424,6 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
         if (song.notes.isEmpty()) return fail("$title has no notes")
         synchronized(lock) {
             engine?.stop(out)
-            usedKeys = ControlKeys.usedKeys(song)
             engine = Engine(song, options.copy(tempoPct = 100))
             options = engine!!.options
             lastState = PlayState.Stopped
@@ -605,10 +601,18 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
 
     override fun onKey(key: Int, down: Boolean, vel: Int) {
         // Control keys (core/Controls.kt): any time nothing plays, mid-song
-        // only those the song never uses.
+        // unless the song plays that key near where it is.
         if (down) {
-            val busy = synchronized(lock) { engine?.state }.let { it == PlayState.Playing || it == PlayState.Waiting }
-            val c = ControlKeys.press(key, busy, usedKeys)
+            val c = synchronized(lock) {
+                val e = engine
+                if (e != null && (e.state == PlayState.Playing || e.state == PlayState.Waiting)) {
+                    // Say so when a control key is taken as a note: on the
+                    // piano it just looks like the key did nothing.
+                    val d = ControlKeys.of(key)?.let { ControlKeys.noteNear(e.song.notes, key, e.positionMs, e.options.hands) }
+                    if (d != null) Log.i(TAG, "control key $key is a note here (${d} ms)")
+                    ControlKeys.press(key, e.song.notes, e.positionMs, e.options.hands)
+                } else ControlKeys.press(key, null)
+            }
             if (c != null) {
                 heldControls[key and 127] = true
                 flashKey(key)

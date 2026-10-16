@@ -23,7 +23,7 @@ tablet — the Android port of the Piano Coach firmware in
   −250/+300 ms). Hands = Right or Left tracks only that hand.
 * **The piano is the remote.** The app opens in Follow with a random
   儿时回忆 song, which starts as soon as the piano connects. The lowest and
-  highest keys work as buttons (whenever the song doesn't use them):
+  highest keys work as buttons (unless the song is about to play that key):
 
   | Low end | | High end | |
   |---|---|---|---|
@@ -40,9 +40,11 @@ tablet — the Android port of the Piano Coach firmware in
   it, E1 / F1 jump to a song of the next category and shuffle its folder,
   picking a song any other way ends it. Categories are the library's
   top-level folders (儿时回忆, 影视剧场, 流行空间, 红色歌谣, 经典乐章).
-  Same map as the firmware (`piano-core/src/controls.rs`). Mid-song a key
-  the song itself plays is a note (F1 in 15 % of the library, G1 in 24 %):
-  pause first (C1) and it works.
+  Same map as the firmware (`piano-core/src/controls.rs`). Mid-song a
+  control key is a note when the song plays it, in a hand you play, from
+  2 s before to 3 s after where the song is; anywhere else in the song it
+  is a control (a whole-song rule left F1 dead in 15 % of the library).
+  Pausing (C1) frees every key.
 * **Library**: the 2449-song JustPiano library is bundled; search by title,
   full pinyin (`xiaoxingxing`) or initials (`mbg` → 卖报歌). Any other
   `.mid` can be opened with **Open MIDI file**.

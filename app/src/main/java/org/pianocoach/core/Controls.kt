@@ -7,9 +7,11 @@ import kotlin.random.Random
  * and highest keys of the 88 act as buttons, so the app can be driven from
  * the piano alone.
  *
- * A control key works whenever nothing is being played, and during a song
- * only if that song never uses the key — a real note is never taken for a
- * command. Nearly all songs stay inside C1–C7.
+ * A control key works whenever nothing is being played. During a song it
+ * is a note instead when the song plays that key, in a hand the learner
+ * plays, within [ControlKeys.NOTE_BEFORE_MS] before / [ControlKeys.NOTE_AFTER_MS]
+ * after the position — a real note is never taken for a command, and a key
+ * the song uses only elsewhere still works.
  *
  * ```
  * low end (left hand)                    high end (right hand)
@@ -66,20 +68,44 @@ object ControlKeys {
 
     fun of(key: Int): Control? = KEYS.firstOrNull { it.first == key }?.second
 
-    /** Keys a song plays at all (any hand). */
-    fun usedKeys(song: Song): BooleanArray {
-        val used = BooleanArray(128)
-        for (n in song.notes) used[n.key and 127] = true
-        return used
+    /** Mid-song, a control key is a note if the song plays it from this long before the position (a late learner)… */
+    const val NOTE_BEFORE_MS = 2000
+    /** …to this long after it (Follow lights a note up to 1.5 s ahead, plus reaction). Song time. */
+    const val NOTE_AFTER_MS = 3000
+
+    /**
+     * The note of [key] the learner may be playing at [posMs]: its start
+     * relative to [posMs] (negative = already started), the nearest one in
+     * the window, only in [hands]. [notes] sorted by start.
+     */
+    fun noteNear(notes: List<Note>, key: Int, posMs: Int, hands: HandSel): Int? {
+        val from = posMs - NOTE_BEFORE_MS
+        val to = posMs + NOTE_AFTER_MS
+        var lo = 0
+        var hi = notes.size
+        while (lo < hi) {
+            val mid = (lo + hi) ushr 1
+            if (notes[mid].startMs < from) lo = mid + 1 else hi = mid
+        }
+        var best: Int? = null
+        for (i in lo until notes.size) {
+            val n = notes[i]
+            if (n.startMs > to) break
+            if (n.key != key || !hands.includes(n.hand)) continue
+            val d = n.startMs - posMs
+            if (best == null || Math.abs(d) < Math.abs(best)) best = d
+        }
+        return best
     }
 
     /**
      * What a press of [key] means: a control if the key is one and either
-     * nothing is being played ([busy] false) or the song never uses it.
+     * nothing is being played ([notes] null) or the song has no note of
+     * that key near [posMs] ([noteNear]).
      */
-    fun press(key: Int, busy: Boolean, used: BooleanArray?): Control? {
+    fun press(key: Int, notes: List<Note>?, posMs: Int = 0, hands: HandSel = HandSel.Both): Control? {
         val c = of(key) ?: return null
-        if (busy && used != null && used[key and 127]) return null
+        if (notes != null && noteNear(notes, key, posMs, hands) != null) return null
         return c
     }
 }

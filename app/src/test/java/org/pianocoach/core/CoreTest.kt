@@ -176,10 +176,18 @@ class CoreTest {
         assertEquals(null, ControlKeys.of(60))
         assertEquals(ControlKeys.KEYS.size, ControlKeys.KEYS.map { it.first }.toSet().size)
         assertTrue(ControlKeys.KEYS.all { it.first in 21..108 })
-        val used = BooleanArray(128).also { it[21] = true }
-        assertEquals(null, ControlKeys.press(21, true, used))
-        assertEquals(Control.PrevSong, ControlKeys.press(21, false, used))
-        assertEquals(Control.NextSong, ControlKeys.press(23, true, used))
+        // Left hand: A0 at the start, F1 at 10 s. Mid-song a control key is a
+        // note only near a note of that key, in a hand the learner plays.
+        val notes = listOf(Note(0, 500, 21, 60, 0, Hand.Left), Note(10_000, 10_500, 29, 60, 0, Hand.Left))
+        assertEquals(Control.PrevSong, ControlKeys.press(21, null))
+        assertEquals(null, ControlKeys.press(21, notes, 0, HandSel.Both))
+        assertEquals(Control.PrevSong, ControlKeys.press(21, notes, ControlKeys.NOTE_BEFORE_MS + 1, HandSel.Both))
+        assertEquals(Control.PrevSong, ControlKeys.press(21, notes, 0, HandSel.Right))
+        assertEquals(Control.NextCategory, ControlKeys.press(29, notes, 0, HandSel.Both))
+        assertEquals(null, ControlKeys.press(29, notes, 7_500, HandSel.Left))
+        assertEquals(2_500, ControlKeys.noteNear(notes, 29, 7_500, HandSel.Left))
+        assertEquals(Control.NextCategory, ControlKeys.press(29, notes, 10_000 + ControlKeys.NOTE_BEFORE_MS + 1, HandSel.Both))
+        assertEquals(Control.NextSong, ControlKeys.press(23, notes, 0, HandSel.Both))
     }
 
     @Test

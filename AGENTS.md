@@ -195,8 +195,10 @@ scored (hits −250/+300 ms); otherwise full velocity and unscored.
 launch loads a random song from folder `儿时回忆` in **Follow** and starts it
 as soon as a piano link is up (or immediately if sound is Tablet-only). The
 lowest/highest keys (A0–G#1, D7–C8) are buttons — see the table in
-`README.md` / `Controls.kt` — usable whenever nothing plays, and mid-song
-only if the song never uses that key. E1/F1 step the top-level
+`README.md` / `Controls.kt` — usable whenever nothing plays; mid-song a
+control key is a note if the song plays it (learner's hands) within
+−2…+3 s of the position (`ControlKeys.noteNear`, logged as "control key
+29 is a note here"). E1/F1 step the top-level
 categories (`categoryStep`) and play a random song from anywhere in one
 (`songsBelow`). G#1 toggles shuffle-play of the current folder
 (`Shuffle`, next song 2.5 s after one finishes).
