@@ -253,6 +253,7 @@ existing installs, bump `Prefs.VERSION` and reset that setting when
 | All 88 LEDs on/off (Settings test buttons) | ✔ user-confirmed | ✔ user-confirmed |
 | Learn on the piano: LEDs light, key presses advance | ✔ user-confirmed | ✔ user-confirmed |
 | Panel SysEx received | ✔ | — |
+| E1 / F1 step the top-level categories (208e4f4): 5× F1 then 2× E1 | not tried (PIN-locked, BT off) | ✔ user-confirmed; ended on 红色歌谣 as expected |
 | USB MIDI to the piano | **not tried** | **not tried** |
 
 Unit tests: 2449/2449 library songs parse, finish Learn, engrave.
