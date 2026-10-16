@@ -9,9 +9,9 @@ tablet — the Android port of the Piano Coach firmware in
   LEDs light the same keys).
 * **Sheet music** — a grand staff engraved from the MIDI file (clefs, key
   and time signatures, beams, ties, rests, accidentals), note heads
-  coloured Boomwhackers / Rainbow / Ink with optional C D E or Do Re Mi
-  names, a cursor that follows the music and turns the page. Tap the
-  music to jump there.
+  coloured Boomwhackers (default) / Rainbow / Ink and named C D E
+  (default), Do Re Mi or not at all, a cursor that follows the music and
+  turns the page. Tap the music to jump there.
 * **Learn** (the piano lights the next chord and waits), **Follow** and
   **Listen**; Both / Right / Left hand, tempo 25–200 %, A–B practice loop,
   scores with stars, bookmarks and recently played.

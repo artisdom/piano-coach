@@ -17,6 +17,13 @@ enum class ViewMode { Falling, Sheet }
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("prefs", Context.MODE_PRIVATE)
 
+    /**
+     * Earlier versions wrote every setting on any change, so a stored value
+     * may be an old default rather than a choice. Settings whose default
+     * changed are reset once when the stored version is older.
+     */
+    private val fresh = sp.getInt("version", 1) < VERSION
+
     var bluetooth by mutableStateOf(sp.getBoolean("bluetooth", true))
     var sound by mutableStateOf(SoundOut.entries[sp.getInt("sound", 0).coerceIn(0, 3)])
     var volume by mutableFloatStateOf(sp.getFloat("volume", 0.8f))
@@ -25,11 +32,11 @@ class Prefs(context: Context) {
     var ledOffOnHit by mutableStateOf(sp.getBoolean("ledOffOnHit", true))
     var leadMs by mutableIntStateOf(sp.getInt("leadMs", 700))
 
-    /** 0 ink, 1 Boomwhackers, 2 rainbow. */
-    var sheetColors by mutableIntStateOf(sp.getInt("sheetColors", 1))
+    /** 0 ink, 1 Boomwhackers (default), 2 rainbow. */
+    var sheetColors by mutableIntStateOf(if (fresh) 1 else sp.getInt("sheetColors", 1))
 
-    /** 0 none, 1 letters, 2 solfège. */
-    var noteNames by mutableIntStateOf(sp.getInt("noteNames", 0))
+    /** 0 none, 1 letters C D E (default), 2 solfège. */
+    var noteNames by mutableIntStateOf(if (fresh) 1 else sp.getInt("noteNames", 1))
     var view by mutableStateOf(ViewMode.entries[sp.getInt("view", 0).coerceIn(0, 1)])
 
     /** Falling notes: show only the song's key range. */
@@ -56,6 +63,16 @@ class Prefs(context: Context) {
             .putBoolean("fitRange", fitRange)
             .putBoolean("sheetKeyboard", sheetKeyboard)
             .putBoolean("rollNames", rollNames)
+            .putInt("version", VERSION)
             .apply()
+    }
+
+    init {
+        if (fresh) save()
+    }
+
+    companion object {
+        /** 2: sheet note names default to C D E, colours to Boomwhackers. */
+        private const val VERSION = 2
     }
 }
