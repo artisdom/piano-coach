@@ -91,8 +91,10 @@ fun PlayScreen(coach: Coach, onBack: () -> Unit, onSettings: () -> Unit) {
                     loaded?.title ?: "No song", color = C.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
-                if (loaded != null && loaded.artist.isNotEmpty()) {
-                    Text(loaded.artist, color = C.dim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Artist, and shuffle-play progress while it is on (G#1).
+                val sub = listOfNotNull(loaded?.artist?.ifEmpty { null }, coach.shuffleText).joinToString(" · ")
+                if (sub.isNotEmpty()) {
+                    Text(sub, color = C.dim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Segmented(

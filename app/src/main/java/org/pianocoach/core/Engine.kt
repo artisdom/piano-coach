@@ -34,6 +34,18 @@ class MsgList {
 /** Lowest velocity the piano makes audible is between 8 and 16. */
 private const val MIN_AUDIBLE_VEL = 20
 
+/**
+ * Follow mode: a tracked hand counts as played by the learner from their
+ * first hit on one of its notes until this long (playing time) without one;
+ * meanwhile its notes sound softly as a guide, otherwise at full velocity.
+ */
+const val FOLLOW_IDLE_MS = 4000L
+
+/** Follow guide: the learner's notes at this share of their velocity. */
+private const val GUIDE_VEL_PCT = 40
+private const val GUIDE_VEL_MIN = 24
+private const val GUIDE_VEL_MAX = 48
+
 /** Follow mode: a press this early/late still counts as a hit. */
 private const val HIT_EARLY_MS = 250
 private const val HIT_LATE_MS = 300
@@ -43,13 +55,23 @@ const val MIN_LOOP_MS = 500
 
 enum class Mode { Listen, Learn, Follow }
 
+/**
+ * Listen: the piano plays the song. Learn: LEDs show the next chord and the
+ * song waits for it. Follow: plays like Listen with the tracked hands' keys
+ * lit ahead; a hand the learner is playing (hits within the last
+ * [FOLLOW_IDLE_MS]) sounds softly as a guide and is scored.
+ */
 data class Options(
     val mode: Mode = Mode.Listen,
-    /** Learn/Follow: the hand(s) the learner plays. Listen: hands played. */
+    /**
+     * Learn: the hand(s) the learner plays. Follow: the hands tracked (lit
+     * ahead, played softly while the learner plays them, scored). Listen:
+     * hands played.
+     */
     val hands: HandSel = HandSel.Both,
     /** 25..200, percent of the file's tempo. */
     val tempoPct: Int = 100,
-    /** Learn/Follow: the piano plays the other hand. */
+    /** Learn: the piano plays the other hand (Follow always does). */
     val accompany: Boolean = true,
     /** Learn: any key advances (young children). */
     val easy: Boolean = false,
@@ -93,12 +115,17 @@ private const val T_PEDAL = 2
 private const val T_HINT_ON = 3
 private const val T_HINT_OFF = 4
 
+/** Follow: sound / release target [Timed.a] (softly while its hand is played). */
+private const val T_GUIDE_ON = 5
+private const val T_GUIDE_OFF = 6
+
 /** A timed output; [a], [b] are key/vel, cc/val or target index. */
 private class Timed(val ms: Int, val kind: Int, val a: Int, val b: Int = 0) {
-    val isRelease get() = kind == T_OFF || kind == T_HINT_OFF
+    val isRelease get() = kind == T_OFF || kind == T_HINT_OFF || kind == T_GUIDE_OFF
 }
 
-private class Target(val ms: Int, val key: Int, var hit: Boolean)
+/** Follow target; [guided] = its note is sounding. */
+private class Target(val ms: Int, val key: Int, val vel: Int, val hand: Hand, var hit: Boolean, var guided: Boolean = false)
 
 class Engine(val song: Song, opts: Options) {
     var options: Options = opts
@@ -109,6 +136,12 @@ class Engine(val song: Song, opts: Options) {
     /** Song position in ms (tempo-scaled song time). */
     private var pos = 0.0
     private var lastNow: Long? = null
+
+    /** Wall-clock ms spent playing (Follow's idle timeout ignores pauses). */
+    private var playedMs = 0L
+
+    /** Follow: [playedMs] of the last hit per hand (right, left), -1 = none. */
+    private val lastHit = longArrayOf(-1, -1)
     private var timeline: List<Timed> = emptyList()
     private var cursor = 0
     private var steps: List<Step> = emptyList()
@@ -150,7 +183,9 @@ class Engine(val song: Song, opts: Options) {
         for (n in song.notes) {
             val audible = when (o.mode) {
                 Mode.Listen -> o.hands.includes(n.hand)
-                Mode.Learn, Mode.Follow -> o.accompany && !o.hands.includes(n.hand)
+                Mode.Learn -> o.accompany && !o.hands.includes(n.hand)
+                // Tracked hands sound through T_GUIDE_ON instead.
+                Mode.Follow -> !o.hands.includes(n.hand)
             }
             if (audible) {
                 tl.add(Timed(n.startMs, T_ON, n.key, maxOf(n.vel, MIN_AUDIBLE_VEL)))
@@ -158,19 +193,22 @@ class Engine(val song: Song, opts: Options) {
             }
             if (o.mode == Mode.Follow && o.hands.includes(n.hand)) {
                 val idx = tg.size
-                tg.add(Target(n.startMs, n.key, false))
+                tg.add(Target(n.startMs, n.key, n.vel, n.hand, false))
                 tl.add(Timed(maxOf(0, n.startMs - o.leadMs), T_HINT_ON, idx))
                 tl.add(Timed(n.startMs + HIT_LATE_MS, T_HINT_OFF, idx))
+                // After the hint, so a note at the very start lights first.
+                tl.add(Timed(n.startMs, T_GUIDE_ON, idx))
+                tl.add(Timed(n.endMs, T_GUIDE_OFF, idx))
             }
         }
         // The pedal belongs to whoever is playing the sound.
-        if (o.mode == Mode.Listen || o.accompany) {
+        if (o.mode != Mode.Learn || o.accompany) {
             for (p in song.pedals) tl.add(Timed(p.ms, T_PEDAL, p.cc, p.v))
         }
         // Stable sort: at equal times releases precede pedals precede starts.
         tl.sortWith(compareBy<Timed>({ it.ms }, {
             when (it.kind) {
-                T_OFF, T_HINT_OFF -> 0
+                T_OFF, T_HINT_OFF, T_GUIDE_OFF -> 0
                 T_PEDAL -> 1
                 else -> 2
             }
@@ -239,6 +277,7 @@ class Engine(val song: Song, opts: Options) {
             silence(out)
             rebuild()
             loops = 0
+            lastHit.fill(-1)
             seekInner(loopRange?.first ?: 0, out)
         }
         state = PlayState.Playing
@@ -276,7 +315,10 @@ class Engine(val song: Song, opts: Options) {
         cursor = partition(timeline.size) { timeline[it].ms < ms }
         step = partition(steps.size) { steps[it].ms < ms }
         stepHit.clear()
-        for (t in targets) t.hit = t.ms < ms
+        for (t in targets) {
+            t.hit = t.ms < ms
+            t.guided = false
+        }
         if (options.mode == Mode.Learn) lightStep(out)
     }
 
@@ -291,6 +333,7 @@ class Engine(val song: Song, opts: Options) {
     }
 
     private fun releaseSounding(out: MsgList) {
+        for (t in targets) t.guided = false
         for (k in 0 until 128) {
             if (sounding[k] > 0) {
                 sounding[k] = 0
@@ -358,6 +401,7 @@ class Engine(val song: Song, opts: Options) {
         }
         val dt = lastNow?.let { maxOf(0L, now - it) } ?: 0L
         lastNow = now
+        playedMs += dt
         if (state == PlayState.Playing) pos += dt * options.tempoPct / 100.0
         // Practice loop: checked before the Learn halt, so a chord at or
         // past the end is never waited for.
@@ -398,7 +442,28 @@ class Engine(val song: Song, opts: Options) {
                     val tg = targets[t.a]
                     if (!tg.hit) {
                         hintOff(tg.key, out)
-                        stats = stats.copy(misses = stats.misses + 1, streak = 0)
+                        // Only a hand the learner is playing can miss.
+                        if (handActive(tg.hand)) stats = stats.copy(misses = stats.misses + 1, streak = 0)
+                    }
+                }
+                T_GUIDE_ON -> {
+                    val tg = targets[t.a]
+                    // Already played (early): the learner's own note sounds.
+                    if (!tg.hit) {
+                        val vel = if (handActive(tg.hand)) {
+                            (tg.vel * GUIDE_VEL_PCT / 100).coerceIn(GUIDE_VEL_MIN, GUIDE_VEL_MAX)
+                        } else {
+                            maxOf(tg.vel, MIN_AUDIBLE_VEL)
+                        }
+                        tg.guided = true
+                        soundOn(tg.key, vel, out)
+                    }
+                }
+                T_GUIDE_OFF -> {
+                    val tg = targets[t.a]
+                    if (tg.guided) {
+                        tg.guided = false
+                        soundOff(tg.key, out)
                     }
                 }
             }
@@ -459,14 +524,25 @@ class Engine(val song: Song, opts: Options) {
         if (found >= 0) {
             val t = targets[found]
             t.hit = true
+            lastHit[t.hand.ordinal] = playedMs
             stats = stats.copy(hits = stats.hits + 1)
             bumpStreak()
             // Its LED may already be lit (inside the lead window).
             if (t.ms - options.leadMs <= p) hintOff(key, out)
-        } else {
+        } else if (handActive(Hand.Right) || handActive(Hand.Left)) {
+            // Keys played while just listening are not scored.
             wrong(key)
         }
     }
+
+    /** Follow: the learner is playing this hand (a hit within [FOLLOW_IDLE_MS] of playing time). */
+    private fun handActive(h: Hand): Boolean {
+        val t = lastHit[h.ordinal]
+        return t >= 0 && playedMs - t < FOLLOW_IDLE_MS
+    }
+
+    /** Follow: whether the learner is playing the right / left hand now. */
+    fun following(): Pair<Boolean, Boolean> = handActive(Hand.Right) to handActive(Hand.Left)
 
     private fun wrong(key: Int) {
         stats = stats.copy(wrong = stats.wrong + 1, streak = 0)

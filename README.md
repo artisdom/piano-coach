@@ -12,10 +12,33 @@ tablet — the Android port of the Piano Coach firmware in
   coloured Boomwhackers / Rainbow / Ink with optional C D E or Do Re Mi
   names, a cursor that follows the music and turns the page. Tap the
   music to jump there.
-* **Learn** (the piano lights the next chord and waits), **Follow** (keys
-  light ahead; hits within −250/+300 ms count) and **Listen**; Both / Right /
-  Left hand, tempo 25–200 %, A–B practice loop, scores with stars, bookmarks
-  and recently played.
+* **Learn** (the piano lights the next chord and waits), **Follow** and
+  **Listen**; Both / Right / Left hand, tempo 25–200 %, A–B practice loop,
+  scores with stars, bookmarks and recently played.
+* **Follow** plays the song like Listen with the keys lit just ahead. Join
+  in with a hand and, from your first hit on one of its notes, the piano
+  plays that hand softly (40 % velocity) as a guide while the other stays
+  at full volume; play both and both go soft. After 4 s without a hit on a
+  hand it is loud again. Only hands you are playing are scored (hits within
+  −250/+300 ms). Hands = Right or Left tracks only that hand.
+* **The piano is the remote.** The app opens in Follow with a random
+  儿时回忆 song, which starts as soon as the piano connects. The lowest and
+  highest keys work as buttons (whenever the song doesn't use them):
+
+  | Low end | | High end | |
+  |---|---|---|---|
+  | A0 / B0 | previous / next song | D7 / E7 / F7 | Left / Both / Right hand |
+  | A#0 / C#1 | tempo −10 / +10 % | G7 / A7 / B7 | Learn / Follow / Listen |
+  | C1 | play / pause | C8 | bookmark |
+  | D1 | restart | | |
+  | E1 / F1 | previous / next folder (random song) | | |
+  | G1 | random song in the folder | | |
+  | G#1 | shuffle-play the folder (on / off) | | |
+
+  Shuffle-play plays every song of the folder once in random order (the
+  current one first, the next 2.5 s after one ends); B0 / A0 skip within
+  it, E1 / F1 shuffle the next folder, picking a song any other way ends
+  it. Same map as the firmware (`piano-core/src/controls.rs`).
 * **Library**: the 2449-song JustPiano library is bundled; search by title,
   full pinyin (`xiaoxingxing`) or initials (`mbg` → 卖报歌). Any other
   `.mid` can be opened with **Open MIDI file**.
@@ -52,7 +75,7 @@ Core tests (parser, engine, engraving of every library song):
 ## Layout
 
 ```
-core/      Smf, Song, Engine, Notation, Synth, Library (search), Progress — ports of piano-core
+core/      Smf, Song, Engine, Notation, Synth, Library (search), Progress, Controls — ports of piano-core
 midi/      UsbMidiLink, BleMidiLink, MidiStreamParser
 audio/     SpeakerOut (AudioTrack thread for the synth)
 Coach.kt   library index, player thread (engine at ~500 Hz), MIDI routing, settings

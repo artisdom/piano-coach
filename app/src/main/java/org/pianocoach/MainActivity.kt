@@ -69,6 +69,13 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(coach.prefs.bluetooth) {
                     if (coach.prefs.bluetooth) requestBluetooth()
                 }
+                // A song started from the piano keys (or the launch song): show it.
+                LaunchedEffect(coach.playRequests) {
+                    if (coach.playRequests > 0 && screen == Screen.Library) {
+                        lastMain = Screen.Play
+                        screen = Screen.Play
+                    }
+                }
                 BackHandler(enabled = screen != Screen.Library) {
                     screen = if (screen == Screen.Settings && coach.loaded != null && lastMain == Screen.Play) Screen.Play else Screen.Library
                 }

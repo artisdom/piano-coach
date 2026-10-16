@@ -11,6 +11,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import org.pianocoach.audio.SpeakerOut
+import org.pianocoach.core.Control
+import org.pianocoach.core.ControlKeys
 import org.pianocoach.core.Engine
 import org.pianocoach.core.Entry
 import org.pianocoach.core.HandSel
@@ -21,9 +23,11 @@ import org.pianocoach.core.Options
 import org.pianocoach.core.PlayState
 import org.pianocoach.core.Progress
 import org.pianocoach.core.SearchIndex
+import org.pianocoach.core.Shuffle
 import org.pianocoach.core.Song
 import org.pianocoach.core.Stats
 import org.pianocoach.core.msg
+import org.pianocoach.core.noteOff
 import org.pianocoach.core.noteOn
 import org.pianocoach.midi.BleMidiLink
 import org.pianocoach.midi.PianoLink
@@ -92,8 +96,31 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
     private var engine: Engine? = null
     var loaded by mutableStateOf<Loaded?>(null)
         private set
-    var options by mutableStateOf(Options())
+
+    /** Every launch starts in Follow (with a 儿时回忆 song, see [bootSong]). */
+    var options by mutableStateOf(Options(mode = Mode.Follow))
         private set
+
+    /** Bumped when the piano keys start a song: the activity opens Play. */
+    var playRequests by mutableIntStateOf(0)
+        private set
+
+    /** Shuffle-play (G#1): folder, order, progress for the Play page. */
+    private var shuffle: Shuffle? = null
+    private var shuffleDir = ""
+    var shuffleText by mutableStateOf<String?>(null)
+        private set
+
+    /** Keys the loaded song plays (notes, not controls, mid-song). */
+    @Volatile
+    private var usedKeys: BooleanArray? = null
+
+    /** Control keys held down: their release is not passed on. */
+    private val heldControls = BooleanArray(128)
+
+    /** The boot song waits for the piano (or plays at once on the tablet). */
+    private var autostart = false
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
     var result by mutableStateOf<RunResult?>(null)
     var toast by mutableStateOf<String?>(null)
     private val out = MsgList()
@@ -158,6 +185,187 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
         search = idx
         Log.i(TAG, "library: ${idx.size} songs in ${SystemClock.uptimeMillis() - t0} ms")
         libraryReady = true
+        main.post { bootSong() }
+    }
+
+    // ================================================================ navigation
+
+    private fun dirOf(path: String) = path.substringBeforeLast('/', "")
+    private fun songsIn(dir: String) = list(dir).filter { !it.isDir }.map { it.path }
+    private fun subdirs(dir: String) = list(dir).filter { it.isDir }.map { it.path }
+
+    /** The song [d] places from [path] in its folder (wrapping). */
+    private fun songStep(path: String, d: Int): String? {
+        val songs = songsIn(dirOf(path).let { if (it == rootAlias) "" else it })
+        if (songs.isEmpty()) return null
+        val i = songs.indexOf(path).coerceAtLeast(0)
+        return songs[Math.floorMod(i + d, songs.size)]
+    }
+
+    private fun randomSong(dir: String): String? = songsIn(dir).randomOrNull()
+
+    /** First ([d] > 0) or last folder holding songs in [dir]'s subtree, [dir] included (depth-first). */
+    private fun edgeFolder(dir: String, d: Int, depth: Int = 0): String? {
+        if (depth > 8) return null
+        val songs = songsIn(dir)
+        if (d > 0 && songs.isNotEmpty()) return dir
+        val subs = if (d > 0) subdirs(dir) else subdirs(dir).reversed()
+        for (s in subs) edgeFolder(s, d, depth + 1)?.let { return it }
+        return if (d < 0 && songs.isNotEmpty()) dir else null
+    }
+
+    /** The next / previous folder after [dir] that holds songs, in library order, wrapping. */
+    private fun folderStep(dir: String, d: Int): String? {
+        if (d > 0) for (s in subdirs(dir)) edgeFolder(s, 1, 1)?.let { return it }
+        var cur = dir
+        while (cur.isNotEmpty() && cur != rootAlias) {
+            val parent = parentOf(cur)
+            val sibs = subdirs(parent)
+            val i = sibs.indexOf(cur).coerceAtLeast(0)
+            val next = if (d > 0) sibs.drop(i + 1).firstNotNullOfOrNull { edgeFolder(it, 1, 1) }
+            else sibs.take(i).reversed().firstNotNullOfOrNull { edgeFolder(it, -1, 1) }
+            if (next != null) return next
+            if (d < 0 && parent.isNotEmpty() && songsIn(parent).isNotEmpty()) return parent
+            cur = parent
+        }
+        return edgeFolder("", d)
+    }
+
+    /** A folder whose display title is [title] (breadth-first, a few levels). */
+    private fun findFolder(title: String): String? {
+        var level = listOf("")
+        repeat(4) {
+            val next = ArrayList<String>()
+            for (d in level) for (s in subdirs(d)) {
+                if (Names.entry(s, true).title == title) return s
+                next.add(s)
+            }
+            level = next
+        }
+        return null
+    }
+
+    /** Every launch: a random 儿时回忆 song in Follow, started once the piano is there. */
+    private fun bootSong() {
+        if (loaded != null) return
+        val dir = findFolder(START_FOLDER) ?: edgeFolder("", 1) ?: return
+        val path = randomSong(dir) ?: return
+        if (!loadAsset(path)) return
+        playRequests++
+        autostart = true
+        maybeAutostart()
+    }
+
+    private fun maybeAutostart() {
+        if (!autostart) return
+        if (activeLink != null || prefs.sound == SoundOut.Speaker) {
+            autostart = false
+            start()
+        }
+    }
+
+    /** Load and start a library song chosen from the piano. */
+    private fun playPath(path: String, fromShuffle: Boolean = false) {
+        if (!fromShuffle) endShuffle(null)
+        if (loadAsset(path, fromShuffle)) {
+            start()
+            playRequests++
+        }
+    }
+
+    private fun endShuffle(msg: String?) {
+        if (shuffle == null) return
+        shuffle = null
+        shuffleText = null
+        if (msg != null) toast = msg
+    }
+
+    private fun showShuffle() {
+        val sh = shuffle ?: return
+        shuffleText = "Shuffle ${Names.entry(shuffleDir, true).title} ${sh.played} / ${sh.size}"
+    }
+
+    /** Shuffle [dir]; [first] plays first if it is one of its songs. */
+    private fun startShuffle(dir: String, first: String?): Shuffle? {
+        val songs = songsIn(dir)
+        if (songs.isEmpty()) return null
+        shuffleDir = dir
+        return Shuffle(songs, first, System.nanoTime()).also { shuffle = it; showShuffle() }
+    }
+
+    // ================================================================ piano keys
+
+    /** A piano-key control (main thread). */
+    private fun control(c: Control) {
+        val current = loaded?.id?.takeIf { !it.startsWith("file:") }
+        val dir = current?.let { dirOf(it) }
+        var msg: String? = c.label
+        val sh = shuffle
+        when (c) {
+            Control.PlayPause -> if (loaded != null) togglePlay()
+            Control.Restart -> if (loaded != null) restart()
+            Control.TempoDown, Control.TempoUp -> {
+                setTempo(options.tempoPct + if (c == Control.TempoUp) 10 else -10)
+                msg = "Tempo ${options.tempoPct} %"
+            }
+            is Control.SetMode -> setMode(c.mode)
+            is Control.SetHands -> setHands(c.hands)
+            Control.Bookmark -> {
+                val l = loaded
+                if (l == null) msg = null else {
+                    toggleBookmark(l.id)
+                    msg = if (progress.get(l.id).bookmarked) "Bookmarked ★" else "Bookmark removed"
+                }
+            }
+            Control.ShuffleFolder -> when {
+                sh != null -> { endShuffle(null); msg = "Shuffle off" }
+                dir == null -> msg = "Pick a library song first"
+                else -> {
+                    val playing = synchronized(lock) { engine?.state }.let { it == PlayState.Playing || it == PlayState.Waiting }
+                    val s = startShuffle(dir, current)
+                    if (s == null) msg = "No songs to shuffle here" else {
+                        msg = "Shuffle ${Names.entry(dir, true).title}: ${s.size} songs"
+                        if (s.current != current || !playing) s.current?.let { playPath(it, fromShuffle = true) }
+                    }
+                }
+            }
+            Control.PrevSong, Control.NextSong -> {
+                val d = if (c == Control.NextSong) 1 else -1
+                if (sh != null) {
+                    val next = sh.step(d)
+                    if (next == null) endShuffle("Shuffle: folder done") else { showShuffle(); playPath(next, fromShuffle = true) }
+                } else current?.let { songStep(it, d) }?.let { playPath(it) }
+            }
+            Control.PrevFolder, Control.NextFolder -> {
+                val d = if (c == Control.NextFolder) 1 else -1
+                val next = dir?.let { folderStep(it, d) }
+                if (next != null) {
+                    if (sh != null) {
+                        startShuffle(next, null)?.current?.let { playPath(it, fromShuffle = true) }
+                        msg = shuffleText
+                    } else {
+                        randomSong(next)?.let { playPath(it) }
+                        msg = "${c.label}: ${Names.entry(next, true).title}"
+                    }
+                }
+            }
+            Control.RandomSong -> dir?.let { randomSong(it) }?.let { playPath(it) }
+        }
+        msg?.let { toast = it }
+    }
+
+    /** Shuffle-play: the next song, a moment after one has ended. */
+    private fun shuffleNext() {
+        val sh = shuffle ?: return
+        if (synchronized(lock) { engine?.state } != PlayState.Finished) return
+        val next = sh.step(1)
+        if (next == null) {
+            endShuffle("Shuffle: folder done")
+        } else {
+            showShuffle()
+            toast = shuffleText
+            playPath(next, fromShuffle = true)
+        }
     }
 
     fun list(dir: String): List<Entry> = tree[dir].orEmpty()
@@ -179,7 +387,9 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
 
     // ================================================================ loading
 
-    fun loadAsset(path: String): Boolean {
+    /** Load a library song; any song not chosen by shuffle-play ends it. */
+    fun loadAsset(path: String, fromShuffle: Boolean = false): Boolean {
+        if (!fromShuffle) main.post { endShuffle("Shuffle off") }
         val bytes = runCatching {
             getApplication<Application>().assets.open("midi/$path").use { it.readBytes() }
         }.getOrElse { return fail("Cannot open $path") }
@@ -188,6 +398,7 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
     }
 
     fun loadUri(uri: Uri): Boolean {
+        endShuffle("Shuffle off")
         val cr = getApplication<Application>().contentResolver
         val name = runCatching {
             cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
@@ -210,6 +421,7 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
         if (song.notes.isEmpty()) return fail("$title has no notes")
         synchronized(lock) {
             engine?.stop(out)
+            usedKeys = ControlKeys.usedKeys(song)
             engine = Engine(song, options.copy(tempoPct = 100))
             options = engine!!.options
             lastState = PlayState.Stopped
@@ -370,6 +582,7 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
     }
 
     private fun finished(e: Engine) {
+        if (shuffle != null) main.postDelayed({ shuffleNext() }, SHUFFLE_GAP_MS)
         val l = loaded ?: return
         val o = e.options
         if (o.mode == Mode.Listen) return
@@ -385,7 +598,31 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
     // ================================================================ keys
 
     override fun onKey(key: Int, down: Boolean, vel: Int) {
+        // Control keys (core/Controls.kt): any time nothing plays, mid-song
+        // only those the song never uses.
+        if (down) {
+            val busy = synchronized(lock) { engine?.state }.let { it == PlayState.Playing || it == PlayState.Waiting }
+            val c = ControlKeys.press(key, busy, usedKeys)
+            if (c != null) {
+                heldControls[key and 127] = true
+                flashKey(key)
+                main.post { control(c) }
+                return
+            }
+        } else if (heldControls[key and 127]) {
+            heldControls[key and 127] = false
+            return
+        }
         keyInput(key, down)
+    }
+
+    /** Light a control key's LED for a moment (unless the song lights it meanwhile). */
+    private fun flashKey(key: Int) {
+        activeLink?.send(noteOn(key, 1))
+        main.postDelayed({
+            val lit = synchronized(lock) { engine?.led(key) == true }
+            if (!lit) activeLink?.send(noteOff(key))
+        }, 600)
     }
 
     /** On-screen keyboard: also sounds on the tablet. */
@@ -489,6 +726,7 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
             if (connected) {
                 // Re-light the current hints on the new link.
                 changeOptions(options)
+                maybeAutostart()
             }
         }
     }
@@ -504,5 +742,11 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
 
     companion object {
         private const val TAG = "Coach"
+
+        /** The folder every launch starts in. */
+        const val START_FOLDER = "儿时回忆"
+
+        /** Pause after a song ends before the next shuffled one starts. */
+        private const val SHUFFLE_GAP_MS = 2500L
     }
 }

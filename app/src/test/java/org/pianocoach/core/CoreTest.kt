@@ -102,4 +102,96 @@ class CoreTest {
         println("library: $n songs, $notes notes in ${System.currentTimeMillis() - t0} ms; slowest engrave ${slowest.first} ms (${slowest.second})")
         assertTrue(n > 100)
     }
+
+    /** Right hand C5 every 500 ms for 10 s (vel 80), left hand C3 at the same times (vel 60). */
+    private fun steady(): Song {
+        val trk = ArrayList<Byte>()
+        fun b(vararg v: Int) = v.forEach { trk.add(it.toByte()) }
+        for (i in 0 until 20) {
+            b(if (i == 0) 0 else 0x81, if (i == 0) 0 else 0x70) // delta 240 (0x81 0x70)
+            if (i == 0) trk.removeAt(trk.size - 1)
+            b(0x90, 72, 80, 0x00, 0x90, 48, 60)
+            b(0x81, 0x70, 0x80, 72, 0, 0x00, 0x80, 48, 0)
+        }
+        b(0x00, 0xff, 0x2f, 0x00)
+        val hdr = byteArrayOf(0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xe0.toByte())
+        val n = trk.size
+        val th = byteArrayOf(0x4d, 0x54, 0x72, 0x6b, 0, 0, (n shr 8).toByte(), (n and 0xff).toByte())
+        return Song.parse(hdr + th + trk.toByteArray())
+    }
+
+    private fun struck(out: List<Int>, key: Int) =
+        out.filter { (it shr 16) == 0x90 && ((it shr 8) and 0x7f) == key && (it and 0x7f) > 1 }.map { it and 0x7f }
+
+    private fun MsgList.drainTo(all: MutableList<Int>) {
+        for (i in 0 until size) all.add(this[i])
+        clear()
+    }
+
+    @Test
+    fun followListensUntilYouJoinIn() {
+        val s = steady()
+        assertEquals(40, s.notes.size)
+        val e = Engine(s, Options(mode = Mode.Follow, leadMs = 400))
+        val out = MsgList()
+        val all = ArrayList<Int>()
+        e.play(0, out)
+        var t = 0L
+        while (t < 3000) { t += 5; e.tick(t, out) }
+        out.drainTo(all)
+        // The hands are set by pitch: C5 right, C3 left; both at full velocity.
+        assertTrue(struck(all, 72).all { it == 80 })
+        assertTrue(struck(all, 48).all { it == 60 })
+        assertEquals(0, e.stats.misses)
+        assertEquals(false to false, e.following())
+    }
+
+    @Test
+    fun followGuidesTheHandYouPlayThenLetsGo() {
+        val e = Engine(steady(), Options(mode = Mode.Follow, leadMs = 400))
+        val out = MsgList()
+        val all = ArrayList<Int>()
+        e.play(0, out)
+        e.keyDown(72, out) // join in with the right hand, play until 1.5 s
+        var t = 0L
+        while (t < 9000) {
+            t += 5
+            e.tick(t, out)
+            if (t % 500 == 0L && t < 2000) e.keyDown(72, out)
+        }
+        out.drainTo(all)
+        val rh = struck(all, 72)
+        assertEquals(80, rh[0]) // struck before the first hit
+        // 0.5 … 5 s soft (4 s after the last hit at 1.5 s), then full again.
+        assertTrue(rh.toString(), rh.subList(1, 11).all { it == 32 })
+        assertTrue(rh.toString(), rh.subList(11, rh.size).all { it == 80 })
+        assertTrue(struck(all, 48).all { it == 60 })
+        assertEquals(false to false, e.following())
+    }
+
+    @Test
+    fun controlKeysYieldToTheSong() {
+        assertEquals(Control.PrevSong, ControlKeys.of(21))
+        assertEquals(Control.SetMode(Mode.Follow), ControlKeys.of(105))
+        assertEquals(null, ControlKeys.of(60))
+        assertEquals(ControlKeys.KEYS.size, ControlKeys.KEYS.map { it.first }.toSet().size)
+        assertTrue(ControlKeys.KEYS.all { it.first in 21..108 })
+        val used = BooleanArray(128).also { it[21] = true }
+        assertEquals(null, ControlKeys.press(21, true, used))
+        assertEquals(Control.PrevSong, ControlKeys.press(21, false, used))
+        assertEquals(Control.NextSong, ControlKeys.press(23, true, used))
+    }
+
+    @Test
+    fun shufflePlaysEachSongOnceCurrentFirst() {
+        val songs = (0 until 10).map { "s$it.mid" }
+        val sh = Shuffle(songs, "s7.mid", 42)
+        assertEquals("s7.mid", sh.current)
+        val seen = mutableListOf(sh.current!!)
+        while (true) seen.add(sh.step(1) ?: break)
+        assertEquals(songs, seen.sorted())
+        assertEquals(10, sh.played)
+        val b = Shuffle(songs, null, 1)
+        assertEquals(b.current, b.step(-1))
+    }
 }
