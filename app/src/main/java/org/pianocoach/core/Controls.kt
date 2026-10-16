@@ -19,8 +19,8 @@ import kotlin.random.Random
  * C1  play / pause                       G7  Learn
  * C#1 tempo +10 %                        A7  Follow
  * D1  restart the song                   B7  Listen
- * E1  previous folder (random song)      C8  bookmark the song
- * F1  next folder (random song)
+ * E1  previous category (random song)    C8  bookmark the song
+ * F1  next category (random song)
  * G1  random song in this folder
  * G#1 shuffle-play this folder (on / off)
  * ```
@@ -30,8 +30,8 @@ sealed class Control(val label: String) {
     data object NextSong : Control("Next song")
     data object PlayPause : Control("Play / pause")
     data object Restart : Control("Restart")
-    data object PrevFolder : Control("Previous folder")
-    data object NextFolder : Control("Next folder")
+    data object PrevCategory : Control("Previous category")
+    data object NextCategory : Control("Next category")
     data object RandomSong : Control("Random song")
     data object ShuffleFolder : Control("Shuffle folder")
     data object TempoDown : Control("Tempo −10 %")
@@ -51,8 +51,8 @@ object ControlKeys {
         24 to Control.PlayPause, // C1
         25 to Control.TempoUp, // C#1
         26 to Control.Restart, // D1
-        28 to Control.PrevFolder, // E1
-        29 to Control.NextFolder, // F1
+        28 to Control.PrevCategory, // E1
+        29 to Control.NextCategory, // F1
         31 to Control.RandomSong, // G1
         32 to Control.ShuffleFolder, // G#1
         98 to Control.SetHands(HandSel.Left), // D7

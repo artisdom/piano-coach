@@ -196,8 +196,10 @@ launch loads a random song from folder `儿时回忆` in **Follow** and starts i
 as soon as a piano link is up (or immediately if sound is Tablet-only). The
 lowest/highest keys (A0–G#1, D7–C8) are buttons — see the table in
 `README.md` / `Controls.kt` — usable whenever nothing plays, and mid-song
-only if the song never uses that key. G#1 toggles shuffle-play of the
-current folder (`Shuffle`, next song 2.5 s after one finishes).
+only if the song never uses that key. E1/F1 step the top-level
+categories (`categoryStep`) and play a random song from anywhere in one
+(`songsBelow`). G#1 toggles shuffle-play of the current folder
+(`Shuffle`, next song 2.5 s after one finishes).
 
 **Library (`Coach.buildLibrary`).** Walks `assets/midi` with
 `AssetManager.list` on a background thread (~0.7–2 s); a name ending in a

@@ -214,21 +214,24 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
         return if (d < 0 && songs.isNotEmpty()) dir else null
     }
 
-    /** The next / previous folder after [dir] that holds songs, in library order, wrapping. */
-    private fun folderStep(dir: String, d: Int): String? {
-        if (d > 0) for (s in subdirs(dir)) edgeFolder(s, 1, 1)?.let { return it }
-        var cur = dir
-        while (cur.isNotEmpty() && cur != rootAlias) {
-            val parent = parentOf(cur)
-            val sibs = subdirs(parent)
-            val i = sibs.indexOf(cur).coerceAtLeast(0)
-            val next = if (d > 0) sibs.drop(i + 1).firstNotNullOfOrNull { edgeFolder(it, 1, 1) }
-            else sibs.take(i).reversed().firstNotNullOfOrNull { edgeFolder(it, -1, 1) }
-            if (next != null) return next
-            if (d < 0 && parent.isNotEmpty() && songsIn(parent).isNotEmpty()) return parent
-            cur = parent
-        }
-        return edgeFolder("", d)
+    /** Every song anywhere below [dir]. */
+    private fun songsBelow(dir: String): List<String> = songsIn(dir) + subdirs(dir).flatMap { songsBelow(it) }
+
+    /**
+     * The next ([d] > 0) or previous top-level category (a folder right below
+     * the library root that holds songs) after the one [path] is in, wrapping.
+     * E1 / F1: below the categories the folders are often one film or
+     * composer with a single song, so stepping those felt like stepping songs.
+     */
+    private fun categoryStep(path: String, d: Int): String? {
+        val cats = subdirs("").filter { songsBelow(it).isNotEmpty() }
+        if (cats.isEmpty()) return null
+        val i = cats.indexOfFirst { path.startsWith("$it/") }
+        return cats[when {
+            i >= 0 -> Math.floorMod(i + d, cats.size)
+            d > 0 -> 0
+            else -> cats.size - 1
+        }]
     }
 
     /** A folder whose display title is [title] (breadth-first, a few levels). */
@@ -336,16 +339,19 @@ class Coach(app: Application) : AndroidViewModel(app), PianoListener {
                     if (next == null) endShuffle("Shuffle: folder done") else { showShuffle(); playPath(next, fromShuffle = true) }
                 } else current?.let { songStep(it, d) }?.let { playPath(it) }
             }
-            Control.PrevFolder, Control.NextFolder -> {
-                val d = if (c == Control.NextFolder) 1 else -1
-                val next = dir?.let { folderStep(it, d) }
-                if (next != null) {
+            Control.PrevCategory, Control.NextCategory -> {
+                // A random song from anywhere in the next category; with
+                // shuffle on, its folder is shuffled from that song.
+                val d = if (c == Control.NextCategory) 1 else -1
+                val cat = current?.let { categoryStep(it, d) }
+                val song = cat?.let { songsBelow(it).randomOrNull() }
+                if (cat != null && song != null) {
                     if (sh != null) {
-                        startShuffle(next, null)?.current?.let { playPath(it, fromShuffle = true) }
+                        startShuffle(dirOf(song), song)?.current?.let { playPath(it, fromShuffle = true) }
                         msg = shuffleText
                     } else {
-                        randomSong(next)?.let { playPath(it) }
-                        msg = "${c.label}: ${Names.entry(next, true).title}"
+                        playPath(song)
+                        msg = "${c.label}: ${Names.entry(cat, true).title}"
                     }
                 }
             }

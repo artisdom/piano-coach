@@ -31,14 +31,16 @@ tablet — the Android port of the Piano Coach firmware in
   | A#0 / C#1 | tempo −10 / +10 % | G7 / A7 / B7 | Learn / Follow / Listen |
   | C1 | play / pause | C8 | bookmark |
   | D1 | restart | | |
-  | E1 / F1 | previous / next folder (random song) | | |
+  | E1 / F1 | previous / next category (random song from it) | | |
   | G1 | random song in the folder | | |
   | G#1 | shuffle-play the folder (on / off) | | |
 
   Shuffle-play plays every song of the folder once in random order (the
   current one first, the next 2.5 s after one ends); B0 / A0 skip within
-  it, E1 / F1 shuffle the next folder, picking a song any other way ends
-  it. Same map as the firmware (`piano-core/src/controls.rs`).
+  it, E1 / F1 jump to a song of the next category and shuffle its folder,
+  picking a song any other way ends it. Categories are the library's
+  top-level folders (儿时回忆, 影视剧场, 流行空间, 红色歌谣, 经典乐章).
+  Same map as the firmware (`piano-core/src/controls.rs`).
 * **Library**: the 2449-song JustPiano library is bundled; search by title,
   full pinyin (`xiaoxingxing`) or initials (`mbg` → 卖报歌). Any other
   `.mid` can be opened with **Open MIDI file**.
